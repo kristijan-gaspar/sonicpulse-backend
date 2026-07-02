@@ -1,3 +1,6 @@
 <Solution>
   <Project Path="SonicPulse.Api/SonicPulse.Api.csproj" />
+  <Project Path="SonicPulse.Application/SonicPulse.Application.csproj" />
+  <Project Path="SonicPulse.Domain/SonicPulse.Domain.csproj" />
+  <Project Path="SonicPulse.Infrastructure/SonicPulse.Infrastructure.csproj" />
 </Solution>
