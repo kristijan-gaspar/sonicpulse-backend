@@ -14,4 +14,10 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\SonicPulse.Domain\SonicPulse.Domain.csproj" />
+    <ProjectReference Include="..\SonicPulse.Application\SonicPulse.Application.csproj" />
+    <ProjectReference Include="..\SonicPulse.Infrastructure\SonicPulse.Infrastructure.csproj" />
+  </ItemGroup>
+
 </Project>
