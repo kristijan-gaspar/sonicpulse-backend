@@ -16,7 +16,6 @@ public sealed class ExceptionHandlingMiddleware(
             var statusCode = ex switch
             {
                 ArgumentException => StatusCodes.Status400BadRequest,
-                InvalidOperationException => StatusCodes.Status409Conflict,
                 _ => StatusCodes.Status500InternalServerError
             };
 
