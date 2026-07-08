@@ -3,4 +3,5 @@
   <Project Path="SonicPulse.Application/SonicPulse.Application.csproj" />
   <Project Path="SonicPulse.Domain/SonicPulse.Domain.csproj" />
   <Project Path="SonicPulse.Infrastructure/SonicPulse.Infrastructure.csproj" />
+  <Project Path="SonicPulse.Tests/SonicPulse.Tests.csproj" />
 </Solution>

@@ -1,6 +1,42 @@
 @SonicPulse.Api_HostAddress = http://localhost:5045
 
-GET {{SonicPulse.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### POST — valid detection -> 201, Location header, { "id": ... }
+POST {{SonicPulse.Api_HostAddress}}/api/detections
+Content-Type: application/json
 
-###
+{
+  "deviceId": "11111111-1111-1111-1111-111111111111",
+  "peakDbfs": -8.5,
+  "latitude": 45.8010,
+  "longitude": 15.9700,
+  "gpsAccuracy": 12.0,
+  "peakTimeClient": "2026-07-02T14:31:07Z"
+}
+
+### POST — invalid payload -> 400 (latitude out of range, positive dBFS)
+POST {{SonicPulse.Api_HostAddress}}/api/detections
+Content-Type: application/json
+
+{
+  "deviceId": "11111111-1111-1111-1111-111111111111",
+  "peakDbfs": 5,
+  "latitude": 200,
+  "longitude": 15.9700,
+  "gpsAccuracy": 12.0,
+  "peakTimeClient": "2026-07-02T14:31:07Z"
+}
+
+### GET by id (paste id from first response) -> 200
+GET {{SonicPulse.Api_HostAddress}}/api/detections/00000000-0000-0000-0000-000000000000
+
+### GET nonexistent id -> 404
+GET {{SonicPulse.Api_HostAddress}}/api/detections/99999999-9999-9999-9999-999999999999
+
+### GET by device -> 200, { items, nextCursor }, newest first
+GET {{SonicPulse.Api_HostAddress}}/api/devices/11111111-1111-1111-1111-111111111111/detections
+
+### GET next page (paste nextCursor from previous response)
+GET {{SonicPulse.Api_HostAddress}}/api/devices/11111111-1111-1111-1111-111111111111/detections?limit=2&cursor=12345
+
+### GET nonexistent device -> 200, empty items list (not 404 — a device isn't a resource we look up)
+GET {{SonicPulse.Api_HostAddress}}/api/devices/99999999-9999-9999-9999-999999999999/detections
