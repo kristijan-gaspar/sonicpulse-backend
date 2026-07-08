@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using SonicPulse.Api.Extensions;
 
 namespace SonicPulse.Api.Middleware;
 
@@ -21,7 +22,8 @@ public sealed class ApiKeyMiddleware(RequestDelegate next, IConfiguration config
         if (!context.Request.Headers.TryGetValue(HeaderName, out var provided)
             || !FixedTimeEquals(provided.ToString()))
         {
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteProblemAsync(
+                StatusCodes.Status401Unauthorized, "Missing or invalid API key.");
             return;
         }
 
