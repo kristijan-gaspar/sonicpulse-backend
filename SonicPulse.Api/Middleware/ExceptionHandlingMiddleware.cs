@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Mvc;
+using SonicPulse.Api.Extensions;
 
 namespace SonicPulse.Api.Middleware;
 
@@ -24,17 +24,11 @@ public sealed class ExceptionHandlingMiddleware(
             else
                 logger.LogWarning(ex, "Request rejected: {Message}", ex.Message);
 
-            var problem = new ProblemDetails
-            {
-                Status = statusCode,
-                Title = statusCode == StatusCodes.Status500InternalServerError
-                    ? "An unexpected error occurred."
-                    : ex.Message
-            };
+            var title = statusCode == StatusCodes.Status500InternalServerError
+                ? "An unexpected error occurred."
+                : ex.Message;
 
-            context.Response.StatusCode = statusCode;
-            context.Response.ContentType = "application/problem+json";
-            await context.Response.WriteAsJsonAsync(problem);
+            await context.Response.WriteProblemAsync(statusCode, title);
         }
     }
 }

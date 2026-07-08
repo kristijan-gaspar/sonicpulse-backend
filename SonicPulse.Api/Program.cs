@@ -19,7 +19,8 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-app.UseMiddleware<ExceptionHandlingMiddleware>(); 
+app.UseMiddleware<ExceptionHandlingMiddleware>();
+app.UseMiddleware<ApiKeyMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {
