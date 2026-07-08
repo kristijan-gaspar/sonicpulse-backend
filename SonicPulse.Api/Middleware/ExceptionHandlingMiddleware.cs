@@ -22,6 +22,8 @@ public sealed class ExceptionHandlingMiddleware(
 
             if (statusCode == StatusCodes.Status500InternalServerError)
                 logger.LogError(ex, "Unhandled exception");
+            else
+                logger.LogWarning(ex, "Request rejected: {Message}", ex.Message);
 
             var problem = new ProblemDetails
             {
