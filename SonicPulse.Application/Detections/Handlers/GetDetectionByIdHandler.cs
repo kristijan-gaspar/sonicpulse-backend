@@ -15,5 +15,5 @@ public sealed class GetDetectionByIdHandler(IDetectionRepository detections)
     internal static DetectionDto ToDto(Detection detection) => new(
         detection.Id, detection.SequenceNumber, detection.DeviceId.Value, detection.PeakDbfs,
         detection.Location.Latitude, detection.Location.Longitude, detection.GpsAccuracy,
-        detection.ReceivedAtUtc, detection.PeakTimeClient);
+        detection.ReceivedAtUtc, detection.PeakTimeClient, detection.HotspotId);
 }
