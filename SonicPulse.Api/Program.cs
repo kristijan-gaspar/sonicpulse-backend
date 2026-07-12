@@ -1,5 +1,6 @@
 using Scalar.AspNetCore;
 using Serilog;
+using SonicPulse.Api.Configuration;
 using SonicPulse.Api.Middleware;
 using SonicPulse.Application;
 using SonicPulse.Infrastructure;
@@ -12,8 +13,13 @@ builder.Host.UseSerilog((ctx, cfg) => cfg
 
 builder.Services.AddControllers();
 
-builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services
+    .AddApplication()
+    .AddInfrastructure(builder.Configuration);
+
+
+builder.Services.Configure<GroupingOptions>(
+    builder.Configuration.GetSection(GroupingOptions.SectionName));
 
 builder.Services.AddOpenApi();
 
