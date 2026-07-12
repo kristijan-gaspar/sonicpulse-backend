@@ -13,9 +13,11 @@ public static class DependencyInjection
         this IServiceCollection services, IConfiguration configuration)
     {
         services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException(
-                    "ConnectionStrings:DefaultConnection is not configured.")));
+            options.UseNpgsql(
+                configuration.GetConnectionString("DefaultConnection")
+                    ?? throw new InvalidOperationException(
+                        "ConnectionStrings:DefaultConnection is not configured."),
+                npgsql => npgsql.UseNetTopologySuite()));
 
         services.AddScoped<IDetectionRepository, DetectionRepository>();
 
