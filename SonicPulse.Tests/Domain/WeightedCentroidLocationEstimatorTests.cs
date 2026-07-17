@@ -24,12 +24,27 @@ public class WeightedCentroidLocationEstimatorTests
     }
 
     [Fact]
-    public void Estimate_LouderDetection_PullsCentroidTowardItself()
+    public void Estimate_EqualAccuracyDifferentPeakDbfs_StillReturnsMidpoint()
     {
+        // dBFS is not comparable across uncalibrated microphones (see
+        // SonicPulse-algoritmi-detekcije.md §2.3) - weight comes from GPS
+        // accuracy only, so a much louder reading must NOT skew the centroid.
         var loud = MakeDetection(-5, 10, new Coordinates(45.0, 15.0));
-        var quiet = MakeDetection(-20, 10, new Coordinates(46.0, 16.0));
+        var quiet = MakeDetection(-40, 10, new Coordinates(46.0, 16.0));
 
         var centroid = WeightedCentroidLocationEstimator.Estimate([loud, quiet]);
+
+        Assert.Equal(45.5, centroid.Latitude, precision: 6);
+        Assert.Equal(15.5, centroid.Longitude, precision: 6);
+    }
+
+    [Fact]
+    public void Estimate_MoreAccurateDetection_PullsCentroidTowardItself()
+    {
+        var precise = MakeDetection(-10, 2, new Coordinates(45.0, 15.0));
+        var imprecise = MakeDetection(-10, 50, new Coordinates(46.0, 16.0));
+
+        var centroid = WeightedCentroidLocationEstimator.Estimate([precise, imprecise]);
 
         Assert.True(centroid.Latitude < 45.5);
         Assert.True(centroid.Longitude < 15.5);
@@ -51,15 +66,5 @@ public class WeightedCentroidLocationEstimatorTests
     {
         Assert.Throws<ArgumentException>(
             () => WeightedCentroidLocationEstimator.Estimate([]));
-    }
-
-    [Fact]
-    public void Estimate_WeightUnderflowsToZero_ThrowsInsteadOfReturningNaN()
-    {
-        var a = MakeDetection(-6500, 10, new Coordinates(45.0, 15.0));
-        var b = MakeDetection(-6500, 10, new Coordinates(46.0, 16.0));
-
-        Assert.Throws<ArgumentException>(
-            () => WeightedCentroidLocationEstimator.Estimate([a, b]));
     }
 }
