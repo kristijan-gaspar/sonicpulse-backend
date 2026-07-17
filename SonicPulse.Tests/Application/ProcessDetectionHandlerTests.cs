@@ -173,6 +173,38 @@ public class ProcessDetectionHandlerTests
     }
 
     [Fact]
+    public async Task HandleAsync_ReassemblePass_ExcludesAlreadyAssignedMemberFromRecentBatch()
+    {
+        // A+B form a hotspot when A is processed (B stays Pending, per the
+        // "own turn" design). Later, B gets its own turn: its search also
+        // finds A (already H1-assigned, 4.9s earlier - still within window)
+        // and a brand-new C landing at the exact same instant as B. If
+        // recentBatch naively included A, the 4.9s span would nearly floor
+        // the time-compactness term; excluding already-assigned A (while
+        // still including anchor B) should keep it tight instead.
+        var a = MakeDetection(BaseLocation, BaseTime, DeviceId.New());
+        var b = MakeDetection(BaseLocation, BaseTime.AddSeconds(4.9), DeviceId.New());
+        _detectionStore.AddRange([a, b]);
+
+        await _handler.HandleAsync(a.Id, default);
+        Assert.NotNull(a.HotspotId);
+        Assert.Equal(a.HotspotId, b.HotspotId);
+
+        var c = MakeDetection(BaseLocation, BaseTime.AddSeconds(4.9), DeviceId.New());
+        _detectionStore.Add(c);
+
+        await _handler.HandleAsync(b.Id, default);
+
+        Assert.Equal(a.HotspotId, c.HotspotId);
+        var hotspot = _hotspotStore[a.HotspotId!.Value];
+        Assert.Equal(3, hotspot.DeviceCount);
+        // deviceFactor: 3 devices -> 30. timeCompactness: recentBatch is {b, c},
+        // both at the same instant -> 50. Without the fix this would be ~31
+        // (recentBatch {a, b, c} spans 4.9s, timeCompactness collapses to ~1).
+        Assert.Equal(80, hotspot.Confidence);
+    }
+
+    [Fact]
     public async Task HandleAsync_FailedDetectionIsExcludedFromCandidates()
     {
         var failed = MakeDetection(BaseLocation, BaseTime);
