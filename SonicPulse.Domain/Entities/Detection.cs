@@ -37,7 +37,15 @@ public class Detection
 
     public void AssignToHotspot(Guid hotspotId) => HotspotId = hotspotId;
 
-    public void MarkProcessed() => ProcessingStatus = DetectionProcessingStatus.Processed;
+    public void MarkProcessed()
+    {
+        if (ProcessingStatus != DetectionProcessingStatus.Pending) return;
+        ProcessingStatus = DetectionProcessingStatus.Processed;
+    }
 
-    public void MarkFailed() => ProcessingStatus = DetectionProcessingStatus.Failed;
+    public void MarkFailed()
+    {
+        if (ProcessingStatus != DetectionProcessingStatus.Pending) return;
+        ProcessingStatus = DetectionProcessingStatus.Failed;
+    }
 }
