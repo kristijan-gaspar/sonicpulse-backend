@@ -145,8 +145,13 @@ public class DetectionProcessingWorkerTests
     {
         var detection = MakeDetection();
         var (scopeFactory, attempts) = BuildScopeFactory(detection, attemptResults: [true, false]);
+        var timeProvider = TimeProvider.System;
+
         var worker = new DetectionProcessingWorker(
-            new OneShotQueue(detection.Id), scopeFactory.Object, NullLogger<DetectionProcessingWorker>.Instance);
+            new OneShotQueue(detection.Id),
+            scopeFactory.Object,
+            timeProvider,
+            NullLogger<DetectionProcessingWorker>.Instance);
 
         await RunUntilAsync(worker, () => detection.ProcessingStatus != DetectionProcessingStatus.Pending, TimeSpan.FromSeconds(5));
 
@@ -162,8 +167,13 @@ public class DetectionProcessingWorkerTests
         // (attemptResults has no 4th entry, so it defaults to "succeed") then
         // persists the Failed status.
         var (scopeFactory, attempts) = BuildScopeFactory(detection, attemptResults: [true, true, true]);
+        var timeProvider = TimeProvider.System;
+
         var worker = new DetectionProcessingWorker(
-            new OneShotQueue(detection.Id), scopeFactory.Object, NullLogger<DetectionProcessingWorker>.Instance);
+            new OneShotQueue(detection.Id),
+            scopeFactory.Object,
+            timeProvider,
+            NullLogger<DetectionProcessingWorker>.Instance);
 
         await RunUntilAsync(worker, () => detection.ProcessingStatus == DetectionProcessingStatus.Failed, TimeSpan.FromSeconds(5));
 
@@ -176,9 +186,13 @@ public class DetectionProcessingWorkerTests
     {
         var detection = MakeDetection();
         var (scopeFactory, attempts) = BuildScopeFactory(detection, attemptResults: [true, true, false]);
-        var worker = new DetectionProcessingWorker(
-            new OneShotQueue(detection.Id), scopeFactory.Object, NullLogger<DetectionProcessingWorker>.Instance);
+        var timeProvider = TimeProvider.System;
 
+        var worker = new DetectionProcessingWorker(
+            new OneShotQueue(detection.Id),
+            scopeFactory.Object,
+            timeProvider,
+            NullLogger<DetectionProcessingWorker>.Instance);
         await RunUntilAsync(worker, () => detection.ProcessingStatus != DetectionProcessingStatus.Pending, TimeSpan.FromSeconds(5));
 
         Assert.Equal(3, attempts.Count); // 3 distinct scopes, 3 distinct IUnitOfWork mocks
@@ -192,8 +206,13 @@ public class DetectionProcessingWorkerTests
     {
         var detection = MakeDetection();
         var (scopeFactory, _) = BuildScopeFactory(detection, attemptResults: [true, true, true]);
+        var timeProvider = TimeProvider.System;
+
         var worker = new DetectionProcessingWorker(
-            new OneShotQueue(detection.Id), scopeFactory.Object, NullLogger<DetectionProcessingWorker>.Instance);
+            new OneShotQueue(detection.Id),
+            scopeFactory.Object,
+            timeProvider,
+            NullLogger<DetectionProcessingWorker>.Instance);
 
         using var cts = new CancellationTokenSource();
         await worker.StartAsync(cts.Token);
