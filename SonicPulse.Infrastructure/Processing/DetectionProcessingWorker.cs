@@ -10,105 +10,146 @@ namespace SonicPulse.Infrastructure.Processing;
 public sealed class DetectionProcessingWorker(
     IDetectionProcessingQueue queue,
     IServiceScopeFactory scopeFactory,
-    ILogger<DetectionProcessingWorker> logger) : BackgroundService
+    TimeProvider timeProvider,
+    ILogger<DetectionProcessingWorker> logger)
+    : BackgroundService
 {
     private const int MaxAttempts = 3;
-    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(500);
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private static readonly TimeSpan RetryDelay =
+        TimeSpan.FromMilliseconds(500);
+
+    protected override async Task ExecuteAsync(
+        CancellationToken stoppingToken)
     {
         await RecoverPendingAsync(stoppingToken);
 
         await foreach (var detectionId in queue.DequeueAllAsync(stoppingToken))
+        {
             await ProcessOneAsync(detectionId, stoppingToken);
+        }
     }
 
-    private async Task ProcessOneAsync(Guid detectionId, CancellationToken stoppingToken)
+    private async Task ProcessOneAsync(
+        Guid detectionId,
+        CancellationToken cancellationToken)
     {
+        Exception? lastException = null;
+
         for (var attempt = 1; attempt <= MaxAttempts; attempt++)
         {
             try
             {
-                // Fresh scope/DbContext per attempt: a failed attempt must not
-                // leave partially-tracked changes for the retry to build on.
-                using var scope = scopeFactory.CreateScope();
-                var handler = scope.ServiceProvider.GetRequiredService<ProcessDetectionHandler>();
-                await handler.HandleAsync(detectionId, stoppingToken);
+                await ProcessAttemptAsync(detectionId, cancellationToken);
                 return;
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
             {
-                // Application shutdown, not a processing failure. Leave the
-                // detection Pending - startup recovery picks it up next launch.
                 throw;
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                logger.LogError(ex,
-                    "Attempt {Attempt}/{MaxAttempts} failed for detection {DetectionId}",
-                    attempt, MaxAttempts, detectionId);
+                lastException = exception;
 
-                if (attempt == MaxAttempts)
+                if (attempt < MaxAttempts)
                 {
-                    logger.LogError(
-                        "Detection {DetectionId} permanently failed after {MaxAttempts} attempts",
-                        detectionId, MaxAttempts);
-                    await TryMarkFailedAsync(detectionId, stoppingToken);
-                    return;
-                }
+                    logger.LogWarning(
+                        exception,
+                        "Processing attempt {Attempt}/{MaxAttempts} failed for detection {DetectionId}",
+                        attempt,
+                        MaxAttempts,
+                        detectionId);
 
-                try
-                {
-                    await Task.Delay(RetryDelay, stoppingToken);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    throw;
+                    await Task.Delay(
+                        RetryDelay,
+                        timeProvider,
+                        cancellationToken);
                 }
             }
         }
+
+        logger.LogError(
+            lastException,
+            "Detection {DetectionId} permanently failed after {MaxAttempts} attempts",
+            detectionId,
+            MaxAttempts);
+
+        await TryMarkFailedAsync(detectionId, cancellationToken);
     }
 
-    private async Task TryMarkFailedAsync(Guid detectionId, CancellationToken stoppingToken)
+    private async Task ProcessAttemptAsync(
+        Guid detectionId,
+        CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+
+        var handler = scope.ServiceProvider
+            .GetRequiredService<ProcessDetectionHandler>();
+
+        await handler.HandleAsync(detectionId, cancellationToken);
+    }
+
+    private async Task TryMarkFailedAsync(
+        Guid detectionId,
+        CancellationToken cancellationToken)
     {
         try
         {
-            // Fresh scope/DbContext: avoids persisting any partially-tracked
-            // changes left over from the failed attempt.
-            using var scope = scopeFactory.CreateScope();
-            var detections = scope.ServiceProvider.GetRequiredService<IDetectionRepository>();
-            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            await using var scope = scopeFactory.CreateAsyncScope();
 
-            var detection = await detections.GetForProcessingAsync(detectionId, stoppingToken);
-            if (detection is null || detection.ProcessingStatus != DetectionProcessingStatus.Pending)
-                return; // already resolved by some other path; nothing to do
+            var detections = scope.ServiceProvider
+                .GetRequiredService<IDetectionRepository>();
+
+            var unitOfWork = scope.ServiceProvider
+                .GetRequiredService<IUnitOfWork>();
+
+            var detection = await detections.GetForProcessingAsync(
+                detectionId,
+                cancellationToken);
+
+            if (detection is null ||
+                detection.ProcessingStatus != DetectionProcessingStatus.Pending)
+            {
+                return;
+            }
 
             detection.MarkFailed();
-            await unitOfWork.SaveChangesAsync(stoppingToken);
+
+            await unitOfWork.SaveChangesAsync(cancellationToken);
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception exception)
         {
-            // Could not even persist the Failed status (e.g. DB briefly
-            // unreachable). Catching here (instead of letting it propagate)
-            // is what keeps one transient failure from taking down the
-            // entire worker loop, and with it every other queued item.
-            logger.LogError(ex, "Could not mark detection {DetectionId} as failed", detectionId);
+            logger.LogError(
+                exception,
+                "Could not mark detection {DetectionId} as failed",
+                detectionId);
         }
     }
 
-    private async Task RecoverPendingAsync(CancellationToken ct)
+    private async Task RecoverPendingAsync(
+        CancellationToken cancellationToken)
     {
-        using var scope = scopeFactory.CreateScope();
-        var detections = scope.ServiceProvider.GetRequiredService<IDetectionRepository>();
+        await using var scope = scopeFactory.CreateAsyncScope();
 
-        var pendingIds = await detections.GetPendingIdsAsync(ct);
-        foreach (var id in pendingIds)
-            await queue.EnqueueAsync(id, ct);
+        var detections = scope.ServiceProvider
+            .GetRequiredService<IDetectionRepository>();
 
-        logger.LogInformation("Recovered {Count} pending detections after startup", pendingIds.Count);
+        var pendingIds =
+            await detections.GetPendingIdsAsync(cancellationToken);
+
+        foreach (var detectionId in pendingIds)
+        {
+            await queue.EnqueueAsync(detectionId, cancellationToken);
+        }
+
+        logger.LogInformation(
+            "Recovered {Count} pending detections after startup",
+            pendingIds.Count);
     }
 }
