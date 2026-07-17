@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddScoped<SubmitDetectionHandler>();
         services.AddScoped<GetDetectionByIdHandler>();
         services.AddScoped<GetDetectionsByDeviceHandler>();
+        services.AddScoped<ProcessDetectionHandler>();
 
         services.AddValidatorsFromAssemblyContaining<SubmitDetectionRequestValidator>();
 

@@ -6,6 +6,9 @@
 # dotenv files
 .env
 
+# Manual .http test files (contain local ApiKey) - never commit, see incident note in PROGRESS.md
+*.http
+
 # User-specific files
 *.rsuser
 *.suo

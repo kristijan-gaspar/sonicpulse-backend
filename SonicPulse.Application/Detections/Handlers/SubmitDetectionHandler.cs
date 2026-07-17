@@ -7,6 +7,7 @@ namespace SonicPulse.Application.Detections.Handlers;
 
 public sealed class SubmitDetectionHandler(
     IDetectionRepository detections,
+    IDetectionProcessingQueue queue,
     TimeProvider timeProvider)
 {
     public async Task<SubmitDetectionResponse> HandleAsync(
@@ -23,6 +24,7 @@ public sealed class SubmitDetectionHandler(
             request.PeakTimeClient);
 
         await detections.AddAsync(detection, ct);
+        await queue.EnqueueAsync(detection.Id, CancellationToken.None);
 
         return new SubmitDetectionResponse(detection.Id);
     }
