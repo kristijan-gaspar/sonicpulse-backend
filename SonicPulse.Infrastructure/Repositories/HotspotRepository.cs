@@ -18,4 +18,11 @@ public sealed class HotspotRepository(AppDbContext db) : IHotspotRepository
 
     public Task<Hotspot?> GetByIdAsync(Guid id, CancellationToken ct) =>
         db.Hotspots.FirstOrDefaultAsync(h => h.Id == id, ct);
+
+    public async Task<IReadOnlyList<Hotspot>> GetSinceAsync(DateTime sinceUtc, CancellationToken ct)
+        => await db.Hotspots
+            .AsNoTracking()
+            .Where(h => h.LastReceivedAtUtc >= sinceUtc)
+            .OrderByDescending(h => h.LastReceivedAtUtc)
+            .ToListAsync(ct);
 }
