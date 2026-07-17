@@ -12,6 +12,9 @@ public sealed class DetectionProcessingWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<DetectionProcessingWorker> logger) : BackgroundService
 {
+    private const int MaxAttempts = 3;
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(500);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await RecoverPendingAsync(stoppingToken);
@@ -22,23 +25,47 @@ public sealed class DetectionProcessingWorker(
 
     private async Task ProcessOneAsync(Guid detectionId, CancellationToken stoppingToken)
     {
-        using var scope = scopeFactory.CreateScope();
-        var handler = scope.ServiceProvider.GetRequiredService<ProcessDetectionHandler>();
+        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
+        {
+            try
+            {
+                // Fresh scope/DbContext per attempt: a failed attempt must not
+                // leave partially-tracked changes for the retry to build on.
+                using var scope = scopeFactory.CreateScope();
+                var handler = scope.ServiceProvider.GetRequiredService<ProcessDetectionHandler>();
+                await handler.HandleAsync(detectionId, stoppingToken);
+                return;
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                // Application shutdown, not a processing failure. Leave the
+                // detection Pending - startup recovery picks it up next launch.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "Attempt {Attempt}/{MaxAttempts} failed for detection {DetectionId}",
+                    attempt, MaxAttempts, detectionId);
 
-        try
-        {
-            await handler.HandleAsync(detectionId, stoppingToken);
-        }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Application shutdown, not a processing failure. Leave the
-            // detection Pending - startup recovery picks it up next launch.
-            throw;
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to process detection {DetectionId}", detectionId);
-            await TryMarkFailedAsync(detectionId, stoppingToken);
+                if (attempt == MaxAttempts)
+                {
+                    logger.LogError(
+                        "Detection {DetectionId} permanently failed after {MaxAttempts} attempts",
+                        detectionId, MaxAttempts);
+                    await TryMarkFailedAsync(detectionId, stoppingToken);
+                    return;
+                }
+
+                try
+                {
+                    await Task.Delay(RetryDelay, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+            }
         }
     }
 

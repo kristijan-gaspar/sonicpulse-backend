@@ -173,35 +173,80 @@ public class ProcessDetectionHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_ReassemblePass_ExcludesAlreadyAssignedMemberFromRecentBatch()
+    public async Task HandleAsync_ReprocessingAlreadyAssignedPendingMember_DoesNotChangeConfidence()
     {
         // A+B form a hotspot when A is processed (B stays Pending, per the
-        // "own turn" design). Later, B gets its own turn: its search also
-        // finds A (already H1-assigned, 4.9s earlier - still within window)
-        // and a brand-new C landing at the exact same instant as B. If
-        // recentBatch naively included A, the 4.9s span would nearly floor
-        // the time-compactness term; excluding already-assigned A (while
-        // still including anchor B) should keep it tight instead.
-        var a = MakeDetection(BaseLocation, BaseTime, DeviceId.New());
-        var b = MakeDetection(BaseLocation, BaseTime.AddSeconds(4.9), DeviceId.New());
+        // "own turn" design). B later gets its own turn re-discovering the
+        // exact same pair - no new information arrived, so confidence must
+        // not change just because B was reprocessed.
+        var a = MakeDetection(BaseLocation, BaseTime);
+        var b = MakeDetection(BaseLocation, BaseTime.AddSeconds(4.9));
         _detectionStore.AddRange([a, b]);
 
         await _handler.HandleAsync(a.Id, default);
-        Assert.NotNull(a.HotspotId);
-        Assert.Equal(a.HotspotId, b.HotspotId);
-
-        var c = MakeDetection(BaseLocation, BaseTime.AddSeconds(4.9), DeviceId.New());
-        _detectionStore.Add(c);
+        var confidenceAfterFormation = _hotspotStore[a.HotspotId!.Value].Confidence;
 
         await _handler.HandleAsync(b.Id, default);
+        var confidenceAfterReprocessing = _hotspotStore[a.HotspotId!.Value].Confidence;
 
-        Assert.Equal(a.HotspotId, c.HotspotId);
-        var hotspot = _hotspotStore[a.HotspotId!.Value];
-        Assert.Equal(3, hotspot.DeviceCount);
-        // deviceFactor: 3 devices -> 30. timeCompactness: recentBatch is {b, c},
-        // both at the same instant -> 50. Without the fix this would be ~31
-        // (recentBatch {a, b, c} spans 4.9s, timeCompactness collapses to ~1).
-        Assert.Equal(80, hotspot.Confidence);
+        Assert.Equal(confidenceAfterFormation, confidenceAfterReprocessing);
+    }
+
+    [Fact]
+    public async Task HandleAsync_AnchorBelongsToLosingBridgeHotspot_DoesNotThrow()
+    {
+        // Hotspot B forms first, entirely on its own - A's detections don't
+        // exist in the store yet, so B can't reach them.
+        var bMember1 = MakeDetection(BaseLocation, BaseTime.AddSeconds(8));
+        var bMember2 = MakeDetection(BaseLocation, BaseTime.AddSeconds(8.1));
+        _detectionStore.AddRange([bMember1, bMember2]);
+        await _handler.HandleAsync(bMember1.Id, default);
+        var hotspotB = bMember2.HotspotId!.Value;
+
+        // Hotspot A forms next: anchorPartner's own +-5s window ([T-5, T+5])
+        // doesn't reach B's members (8s/8.1s away), so A forms cleanly,
+        // separate from B.
+        var anchorPartner = MakeDetection(BaseLocation, BaseTime);
+        var anchor = MakeDetection(BaseLocation, BaseTime.AddSeconds(4));
+        _detectionStore.AddRange([anchorPartner, anchor]);
+        await _handler.HandleAsync(anchorPartner.Id, default);
+        var hotspotA = anchor.HotspotId!.Value;
+        Assert.NotEqual(hotspotA, hotspotB);
+
+        // Now anchor gets its own turn. Its window ([T-1, T+9]) reaches both
+        // its own A-partner and both of B's members - bridging picks B (tie
+        // on member count broken by more recent timestamp), which filters
+        // the anchor itself OUT of the group (it belongs to A, not B). Every
+        // remaining candidate already belongs to B. This must not throw.
+        var ex = await Record.ExceptionAsync(() => _handler.HandleAsync(anchor.Id, default));
+
+        Assert.Null(ex);
+        // Anchor belongs to the losing hotspot (A) and isn't part of B's
+        // winning group, so per the documented bridging-loser behavior it's
+        // left untouched - still A, just marked Processed for this pass.
+        Assert.Equal(hotspotA, anchor.HotspotId);
+        Assert.Equal(DetectionProcessingStatus.Processed, anchor.ProcessingStatus);
+    }
+
+    [Fact]
+    public async Task HandleAsync_MultipleDetectionsFromOneDevice_AllRemainAssignedToHotspot()
+    {
+        var deviceA = DeviceId.New();
+        var a1 = MakeDetection(BaseLocation, BaseTime, deviceA);
+        var a2 = MakeDetection(BaseLocation, BaseTime.AddSeconds(1), deviceA);
+        var a3 = MakeDetection(BaseLocation, BaseTime.AddSeconds(2), deviceA);
+        var b = MakeDetection(BaseLocation, BaseTime.AddSeconds(3));
+        _detectionStore.AddRange([a1, a2, a3, b]);
+
+        await _handler.HandleAsync(a1.Id, default);
+
+        Assert.NotNull(a1.HotspotId);
+        Assert.Equal(a1.HotspotId, a2.HotspotId);
+        Assert.Equal(a1.HotspotId, a3.HotspotId);
+        Assert.Equal(a1.HotspotId, b.HotspotId);
+        // Dedup only affects the spatial (centroid/radius) calculation, not
+        // membership or DeviceCount.
+        Assert.Equal(2, _hotspotStore[a1.HotspotId!.Value].DeviceCount);
     }
 
     [Fact]

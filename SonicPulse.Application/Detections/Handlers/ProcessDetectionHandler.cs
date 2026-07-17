@@ -58,16 +58,7 @@ public sealed class ProcessDetectionHandler(
             var members = await detections.GetByHotspotIdAsync(id, ct);
             finalGroup = members.Concat(group).DistinctBy(d => d.Id).ToList();
 
-            // recentBatch: this pass's genuinely new evidence - the triggering
-            // detection itself, plus any candidate not already a hotspot member.
-            // group alone isn't enough: it can include detections re-discovered
-            // from an earlier pass (still HotspotId-assigned), which would drag
-            // their older timestamp into the time-compactness calculation.
-            var recentBatch = group
-                .Where(d => d.Id == detection.Id || d.HotspotId is null)
-                .ToList();
-
-            HotspotAssembler.Reassemble(existing, finalGroup, recentBatch, rules);
+            HotspotAssembler.Reassemble(existing, finalGroup, rules);
             hotspotId = existing.Id;
         }
         else

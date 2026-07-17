@@ -14,9 +14,8 @@ public static class WeightedCentroidLocationEstimator
         double sumW = 0, sumLat = 0, sumLon = 0;
         foreach (var d in detections)
         {
-            double amplitude = Math.Pow(10.0, d.PeakDbfs / 20.0);
             double accuracy = Math.Max(d.GpsAccuracy, 1.0);
-            double w = amplitude / accuracy;
+            double w = 1.0 / accuracy;
 
             sumW += w;
             sumLat += w * d.Location.Latitude;
