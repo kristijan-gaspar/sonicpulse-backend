@@ -68,7 +68,7 @@ public class HotspotAssemblerTests
             MakeDetection(new Coordinates(45.8030, 15.9720), BaseTime.AddSeconds(2))
         };
 
-        HotspotAssembler.Reassemble(hotspot, expandedGroup, Rules);
+        HotspotAssembler.Reassemble(hotspot, expandedGroup, expandedGroup, Rules);
 
         Assert.Equal(id, hotspot.Id);
         Assert.Equal(3, hotspot.DeviceCount);

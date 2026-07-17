@@ -33,8 +33,28 @@ public class HeuristicConfidenceScorerTests
     {
         var detections = MakeDetections(deviceCount, timeSpanSeconds);
 
-        var confidence = HeuristicConfidenceScorer.Score(detections, Rules);
+        var confidence = HeuristicConfidenceScorer.Score(detections, detections, Rules);
 
         Assert.Equal(expectedConfidence, confidence);
+    }
+
+    [Fact]
+    public void Score_RecentBatchTight_IgnoresOlderHotspotHistory()
+    {
+        // allMembers spans 10s (an old, long-lived hotspot), but this pass's
+        // recentBatch all arrived at the same instant - confidence should
+        // reflect that tight recent burst, not the full historical span.
+        var old = Detection.Create(DeviceId.New(), -8.5, Location, 12.0, BaseTime, null);
+        var newA = Detection.Create(DeviceId.New(), -8.5, Location, 12.0, BaseTime.AddSeconds(10), null);
+        var newB = Detection.Create(DeviceId.New(), -8.5, Location, 12.0, BaseTime.AddSeconds(10), null);
+
+        var allMembers = new List<Detection> { old, newA, newB };
+        var recentBatch = new List<Detection> { newA, newB };
+
+        var confidence = HeuristicConfidenceScorer.Score(allMembers, recentBatch, Rules);
+
+        // deviceFactor: 3 devices -> min(50, 20+10*1) = 30
+        // timeCompactnessFactor: recentBatch span 0s -> 50 (not floored by the 10s full history)
+        Assert.Equal(80, confidence);
     }
 }

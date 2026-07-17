@@ -8,15 +8,22 @@ public static class HotspotAssembler
 {
     public static Hotspot Assemble(IReadOnlyList<Detection> group, GroupingRules rules)
     {
-        var computed = Compute(group, rules);
+        // Fresh hotspot: the whole group IS the newly-matched batch.
+        var computed = Compute(group, group, rules);
         return Hotspot.Create(
             computed.Centroid, computed.RadiusMeters, computed.Confidence,
             computed.DeviceCount, computed.First, computed.Last);
     }
 
-    public static void Reassemble(Hotspot existing, IReadOnlyList<Detection> group, GroupingRules rules)
+    /// <param name="allMembers">The hotspot's full membership (existing + newly matched) -
+    /// drives centroid, radius, and device count.</param>
+    /// <param name="recentBatch">Only this processing pass's newly-matched detections -
+    /// drives confidence's time-compactness term, see HeuristicConfidenceScorer.</param>
+    public static void Reassemble(
+        Hotspot existing, IReadOnlyList<Detection> allMembers,
+        IReadOnlyList<Detection> recentBatch, GroupingRules rules)
     {
-        var computed = Compute(group, rules);
+        var computed = Compute(allMembers, recentBatch, rules);
         existing.Recalculate(
             computed.Centroid, computed.RadiusMeters, computed.Confidence,
             computed.DeviceCount, computed.First, computed.Last);
@@ -30,6 +37,7 @@ public static class HotspotAssembler
             .GroupBy(d => d.HotspotId!.Value)
             .OrderByDescending(g => g.Count())
             .ThenByDescending(g => g.Max(d => d.ReceivedAtUtc))
+            .ThenBy(g => g.Key) // final tie-break: HotspotId, guarantees a deterministic winner
             .First().Key;
 
         var filtered = group
@@ -42,17 +50,17 @@ public static class HotspotAssembler
     private static (
         Coordinates Centroid, double RadiusMeters, int Confidence,
         int DeviceCount, DateTime First, DateTime Last) Compute(
-        IReadOnlyList<Detection> group, GroupingRules rules)
+        IReadOnlyList<Detection> allMembers, IReadOnlyList<Detection> recentBatch, GroupingRules rules)
     {
-        var centroid = WeightedCentroidLocationEstimator.Estimate(group);
+        var centroid = WeightedCentroidLocationEstimator.Estimate(allMembers);
 
-        double maxDistance = group.Max(d => GeoDistance.Meters(centroid, d.Location));
+        double maxDistance = allMembers.Max(d => GeoDistance.Meters(centroid, d.Location));
         double radius = 0.5 * maxDistance;
 
-        int confidence = HeuristicConfidenceScorer.Score(group, rules);
-        int deviceCount = group.Select(d => d.DeviceId).Distinct().Count();
+        int confidence = HeuristicConfidenceScorer.Score(allMembers, recentBatch, rules);
+        int deviceCount = allMembers.Select(d => d.DeviceId).Distinct().Count();
 
         return (centroid, radius, confidence, deviceCount,
-                group.Min(d => d.ReceivedAtUtc), group.Max(d => d.ReceivedAtUtc));
+                allMembers.Min(d => d.ReceivedAtUtc), allMembers.Max(d => d.ReceivedAtUtc));
     }
 }

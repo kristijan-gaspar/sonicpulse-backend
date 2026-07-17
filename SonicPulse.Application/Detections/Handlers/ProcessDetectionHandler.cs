@@ -58,7 +58,7 @@ public sealed class ProcessDetectionHandler(
             var members = await detections.GetByHotspotIdAsync(id, ct);
             finalGroup = members.Concat(group).DistinctBy(d => d.Id).ToList();
 
-            HotspotAssembler.Reassemble(existing, finalGroup, rules);
+            HotspotAssembler.Reassemble(existing, finalGroup, group, rules);
             hotspotId = existing.Id;
         }
         else
