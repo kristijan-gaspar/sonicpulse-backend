@@ -14,6 +14,9 @@ public sealed class DetectionRepository(AppDbContext db) : IDetectionRepository
 {
     public async Task AddAsync(Detection detection, CancellationToken ct)
     {
+        // Unlike HotspotRepository.AddAsync, this DOES self-commit - submission
+        // is a single-step operation with no other repository writes to batch
+        // with (see SubmitDetectionHandler).
         db.Detections.Add(detection);
         await db.SaveChangesAsync(ct);
     }

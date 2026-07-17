@@ -9,8 +9,11 @@ public sealed class HotspotRepository(AppDbContext db) : IHotspotRepository
 {
     public Task AddAsync(Hotspot hotspot, CancellationToken ct)
     {
+        // Unlike DetectionRepository.AddAsync, this does NOT self-commit - the
+        // caller (ProcessDetectionHandler) commits via IUnitOfWork alongside
+        // the rest of the grouping transaction in the same SaveChangesAsync.
         db.Hotspots.Add(hotspot);
-        return Task.CompletedTask; // does NOT self-commit - caller commits via IUnitOfWork
+        return Task.CompletedTask;
     }
 
     public Task<Hotspot?> GetByIdAsync(Guid id, CancellationToken ct) =>
