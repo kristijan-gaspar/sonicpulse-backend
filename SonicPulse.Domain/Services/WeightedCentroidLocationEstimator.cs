@@ -23,6 +23,10 @@ public static class WeightedCentroidLocationEstimator
             sumLon += w * d.Location.Longitude;
         }
 
+        if (sumW <= 0)
+            throw new ArgumentException(
+                "Total weight underflowed to zero; cannot compute a centroid.", nameof(detections));
+
         return new Coordinates(sumLat / sumW, sumLon / sumW);
     }
 }

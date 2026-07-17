@@ -52,4 +52,14 @@ public class WeightedCentroidLocationEstimatorTests
         Assert.Throws<ArgumentException>(
             () => WeightedCentroidLocationEstimator.Estimate([]));
     }
+
+    [Fact]
+    public void Estimate_WeightUnderflowsToZero_ThrowsInsteadOfReturningNaN()
+    {
+        var a = MakeDetection(-6500, 10, new Coordinates(45.0, 15.0));
+        var b = MakeDetection(-6500, 10, new Coordinates(46.0, 16.0));
+
+        Assert.Throws<ArgumentException>(
+            () => WeightedCentroidLocationEstimator.Estimate([a, b]));
+    }
 }
