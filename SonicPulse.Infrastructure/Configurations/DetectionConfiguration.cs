@@ -44,7 +44,8 @@ public sealed class DetectionConfiguration : IEntityTypeConfiguration<Detection>
 
         builder.Property<Point>("LocationPoint")
             .HasColumnName("location")
-            .HasColumnType("geography(Point, 4326)");
+            .HasColumnType("geography(Point, 4326)")
+            .IsRequired();
 
         builder.HasIndex("LocationPoint").HasMethod("gist");
 
