@@ -8,22 +8,15 @@ public static class HotspotAssembler
 {
     public static Hotspot Assemble(IReadOnlyList<Detection> group, GroupingRules rules)
     {
-        // Fresh hotspot: the whole group IS the newly-matched batch.
-        var computed = Compute(group, group, rules);
+        var computed = Compute(group, rules);
         return Hotspot.Create(
             computed.Centroid, computed.RadiusMeters, computed.Confidence,
             computed.DeviceCount, computed.First, computed.Last);
     }
 
-    /// <param name="allMembers">The hotspot's full membership (existing + newly matched) -
-    /// drives centroid, radius, and device count.</param>
-    /// <param name="recentBatch">Only this processing pass's newly-matched detections -
-    /// drives confidence's time-compactness term, see HeuristicConfidenceScorer.</param>
-    public static void Reassemble(
-        Hotspot existing, IReadOnlyList<Detection> allMembers,
-        IReadOnlyList<Detection> recentBatch, GroupingRules rules)
+    public static void Reassemble(Hotspot existing, IReadOnlyList<Detection> group, GroupingRules rules)
     {
-        var computed = Compute(allMembers, recentBatch, rules);
+        var computed = Compute(group, rules);
         existing.Recalculate(
             computed.Centroid, computed.RadiusMeters, computed.Confidence,
             computed.DeviceCount, computed.First, computed.Last);
@@ -50,17 +43,32 @@ public static class HotspotAssembler
     private static (
         Coordinates Centroid, double RadiusMeters, int Confidence,
         int DeviceCount, DateTime First, DateTime Last) Compute(
-        IReadOnlyList<Detection> allMembers, IReadOnlyList<Detection> recentBatch, GroupingRules rules)
+        IReadOnlyList<Detection> group, GroupingRules rules)
     {
-        var centroid = WeightedCentroidLocationEstimator.Estimate(allMembers);
+        // One device, one spatial vote: a device that sends several detections
+        // for the same event must not out-weigh a device that sent one, so
+        // centroid/radius use one representative per DeviceId (best GPS
+        // accuracy, then loudest, then earliest, then Id - fully deterministic).
+        // deviceCount, timestamps, and confidence still use the full group.
+        var spatialRepresentatives = group
+            .GroupBy(d => d.DeviceId)
+            .Select(g => g
+                .OrderBy(d => d.GpsAccuracy)
+                .ThenByDescending(d => d.PeakDbfs)
+                .ThenBy(d => d.ReceivedAtUtc)
+                .ThenBy(d => d.Id)
+                .First())
+            .ToList();
 
-        double maxDistance = allMembers.Max(d => GeoDistance.Meters(centroid, d.Location));
+        var centroid = WeightedCentroidLocationEstimator.Estimate(spatialRepresentatives);
+
+        double maxDistance = spatialRepresentatives.Max(d => GeoDistance.Meters(centroid, d.Location));
         double radius = 0.5 * maxDistance;
 
-        int confidence = HeuristicConfidenceScorer.Score(allMembers, recentBatch, rules);
-        int deviceCount = allMembers.Select(d => d.DeviceId).Distinct().Count();
+        int confidence = HeuristicConfidenceScorer.Score(group, rules);
+        int deviceCount = group.Select(d => d.DeviceId).Distinct().Count();
 
         return (centroid, radius, confidence, deviceCount,
-                allMembers.Min(d => d.ReceivedAtUtc), allMembers.Max(d => d.ReceivedAtUtc));
+                group.Min(d => d.ReceivedAtUtc), group.Max(d => d.ReceivedAtUtc));
     }
 }
