@@ -49,6 +49,7 @@ public sealed class DataRetentionWorker : BackgroundService
 
     protected override async Task ExecuteAsync(
         CancellationToken stoppingToken)
+    {
         while (!stoppingToken.IsCancellationRequested)
         {
             try

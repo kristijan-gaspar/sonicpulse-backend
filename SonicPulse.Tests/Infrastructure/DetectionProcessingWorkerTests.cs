@@ -279,6 +279,7 @@ public class DetectionProcessingWorkerTests
         await worker.StopAsync(CancellationToken.None);
 
         Assert.Equal(2, recoveryCalls);
+    }
 
     [Fact]
     public async Task ShutdownDuringWorkerRetryDelay_StopsCleanly()
@@ -321,5 +322,6 @@ public class DetectionProcessingWorkerTests
 
         Assert.Equal(1, recoveryCalls);
     }
+
 
 }
