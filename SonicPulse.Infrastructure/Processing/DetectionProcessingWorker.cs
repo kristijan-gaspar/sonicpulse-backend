@@ -20,7 +20,7 @@ public sealed class DetectionProcessingWorker(
         TimeSpan.FromMilliseconds(500);
 
     private static readonly TimeSpan WorkerRetryDelay =
-    TimeSpan.FromSeconds(5);
+        TimeSpan.FromSeconds(5);
 
     protected override async Task ExecuteAsync(
     CancellationToken stoppingToken)
