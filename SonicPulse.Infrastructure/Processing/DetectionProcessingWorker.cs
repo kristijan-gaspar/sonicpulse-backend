@@ -19,14 +19,59 @@ public sealed class DetectionProcessingWorker(
     private static readonly TimeSpan RetryDelay =
         TimeSpan.FromMilliseconds(500);
 
-    protected override async Task ExecuteAsync(
-        CancellationToken stoppingToken)
-    {
-        await RecoverPendingAsync(stoppingToken);
+    private static readonly TimeSpan WorkerRetryDelay =
+    TimeSpan.FromSeconds(5);
 
-        await foreach (var detectionId in queue.DequeueAllAsync(stoppingToken))
+    protected override async Task ExecuteAsync(
+    CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
         {
-            await ProcessOneAsync(detectionId, stoppingToken);
+            try
+            {
+                await RecoverPendingAsync(stoppingToken);
+
+                await foreach (var detectionId in queue.DequeueAllAsync(stoppingToken))
+                {
+                    await ProcessOneAsync(detectionId, stoppingToken);
+                }
+
+                return;
+            }
+            catch (OperationCanceledException)
+                when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(
+                    exception,
+                    "Detection processing worker failed. Retrying in {RetryDelay}",
+                    WorkerRetryDelay);
+            }
+
+            if (!await WaitBeforeRetryAsync(stoppingToken))
+                break;
+        }
+    }
+
+    private async Task<bool> WaitBeforeRetryAsync(
+    CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(
+                WorkerRetryDelay,
+                timeProvider,
+                cancellationToken);
+
+            return true;
+        }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
         }
     }
 
