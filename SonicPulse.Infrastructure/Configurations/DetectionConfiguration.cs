@@ -35,8 +35,11 @@ public sealed class DetectionConfiguration : IEntityTypeConfiguration<Detection>
         builder.Property(x => x.PeakTimeClient).HasColumnName("peak_time_client");
 
         builder.Property(x => x.HotspotId).HasColumnName("hotspot_id");
-        builder.HasOne<Hotspot>().WithMany()
-            .HasForeignKey(x => x.HotspotId).IsRequired(false);
+        builder.HasOne<Hotspot>()
+            .WithMany()
+            .HasForeignKey(x => x.HotspotId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.Property(x => x.ProcessingStatus)
             .HasColumnName("processing_status")

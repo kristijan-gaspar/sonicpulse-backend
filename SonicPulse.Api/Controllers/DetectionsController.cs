@@ -1,5 +1,6 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SonicPulse.Api.Extensions;
 using SonicPulse.Application.Detections.Dtos;
 using SonicPulse.Application.Detections.Handlers;
@@ -14,6 +15,7 @@ public sealed class DetectionsController(
     GetDetectionByIdHandler getByIdHandler) : ControllerBase
 {
     [HttpPost]
+    [EnableRateLimiting(RateLimitingExtensions.DetectionSubmitPolicy)]
     public async Task<IActionResult> Submit(
         SubmitDetectionRequest request, CancellationToken ct)
     {

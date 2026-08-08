@@ -2,10 +2,12 @@ using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
 using Serilog;
 using SonicPulse.Api.Configuration;
+using SonicPulse.Api.Extensions;
 using SonicPulse.Api.Middleware;
 using SonicPulse.Application;
 using SonicPulse.Domain.Rules;
 using SonicPulse.Infrastructure;
+using SonicPulse.Infrastructure.Retention;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +17,8 @@ builder.Host.UseSerilog((ctx, cfg) => cfg
 
 builder.Services.AddControllers();
 
+builder.Services.AddApiRateLimiting(builder.Configuration);
+
 builder.Services
     .AddApplication()
     .AddInfrastructure(builder.Configuration);
@@ -22,6 +26,9 @@ builder.Services
 
 builder.Services.Configure<GroupingOptions>(
     builder.Configuration.GetSection(GroupingOptions.SectionName));
+
+builder.Services.Configure<DataRetentionOptions>(
+    builder.Configuration.GetSection(DataRetentionOptions.SectionName));
 
 builder.Services.AddSingleton(sp =>
 {
@@ -37,13 +44,12 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Force GroupingRules construction now, not on first request: invalid
-// config (e.g. MinDeviceCount = 1 in appsettings) crashes startup instead
-// of surfacing as a 500 on whichever request happens to hit it first.
+
 app.Services.GetRequiredService<GroupingRules>();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<ApiKeyMiddleware>();
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {

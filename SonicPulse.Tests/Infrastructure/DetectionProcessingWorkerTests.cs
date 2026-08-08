@@ -73,12 +73,24 @@ public class DetectionProcessingWorkerTests
         return new Attempt(detections, unitOfWork, new FakeScope(provider));
     }
 
-    private static IServiceScope BuildRecoveryScope()
+    private static IServiceScope BuildRecoveryScope(bool shouldFail = false)
     {
         var detections = new Mock<IDetectionRepository>();
-        detections.Setup(r => r.GetPendingIdsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync((IReadOnlyList<Guid>)[]); // nothing pending at startup
-        var provider = new FakeProvider((typeof(IDetectionRepository), detections.Object));
+
+        detections
+            .Setup(r => r.GetPendingIdsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                if (shouldFail)
+                    throw new InvalidOperationException(
+                        "Simulated recovery failure");
+
+                return [];
+            });
+
+        var provider = new FakeProvider(
+            (typeof(IDetectionRepository), detections.Object));
+
         return new FakeScope(provider);
     }
 
@@ -224,4 +236,92 @@ public class DetectionProcessingWorkerTests
 
         Assert.Equal(DetectionProcessingStatus.Pending, detection.ProcessingStatus);
     }
+
+    [Fact]
+    public async Task RecoveryFailsOnce_ThenRetries()
+    {
+        var recoveryCalls = 0;
+
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+
+        scopeFactory
+            .Setup(f => f.CreateScope())
+            .Returns(() =>
+            {
+                var call = Interlocked.Increment(ref recoveryCalls);
+
+                return BuildRecoveryScope(
+                    shouldFail: call == 1);
+            });
+
+        var timeProvider =
+            new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+
+        var worker = new DetectionProcessingWorker(
+            new OneShotQueue(),
+            scopeFactory.Object,
+            timeProvider,
+            NullLogger<DetectionProcessingWorker>.Instance);
+
+        await worker.StartAsync(CancellationToken.None);
+
+        var deadline = DateTime.UtcNow.AddSeconds(1);
+        while (Volatile.Read(ref recoveryCalls) < 1 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        await Task.Delay(20); // give the worker a chance to schedule the retry delay
+        timeProvider.Advance(TimeSpan.FromSeconds(5));
+
+        deadline = DateTime.UtcNow.AddSeconds(1);
+        while (Volatile.Read(ref recoveryCalls) < 2 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        await worker.StopAsync(CancellationToken.None);
+
+        Assert.Equal(2, recoveryCalls);
+    }
+
+    [Fact]
+    public async Task ShutdownDuringWorkerRetryDelay_StopsCleanly()
+    {
+        var recoveryCalls = 0;
+
+        var scopeFactory = new Mock<IServiceScopeFactory>();
+
+        scopeFactory
+            .Setup(f => f.CreateScope())
+            .Returns(() =>
+            {
+                Interlocked.Increment(ref recoveryCalls);
+
+                return BuildRecoveryScope(
+                    shouldFail: true);
+            });
+
+        var worker = new DetectionProcessingWorker(
+            new OneShotQueue(),
+            scopeFactory.Object,
+            TimeProvider.System,
+            NullLogger<DetectionProcessingWorker>.Instance);
+
+        await worker.StartAsync(CancellationToken.None);
+
+        var deadline = DateTime.UtcNow.AddSeconds(1);
+
+        while (Volatile.Read(ref recoveryCalls) == 0 &&
+               DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(20);
+        }
+
+        await Task.Delay(50);
+
+        await worker
+            .StopAsync(CancellationToken.None)
+            .WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(1, recoveryCalls);
+    }
+
+
 }

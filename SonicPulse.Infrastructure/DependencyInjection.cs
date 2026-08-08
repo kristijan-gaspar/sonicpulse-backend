@@ -5,6 +5,7 @@ using SonicPulse.Application.Abstractions;
 using SonicPulse.Infrastructure.Persistence;
 using SonicPulse.Infrastructure.Processing;
 using SonicPulse.Infrastructure.Repositories;
+using SonicPulse.Infrastructure.Retention;
 
 namespace SonicPulse.Infrastructure;
 
@@ -26,6 +27,9 @@ public static class DependencyInjection
 
         services.AddSingleton<IDetectionProcessingQueue, ChannelDetectionQueue>();
         services.AddHostedService<DetectionProcessingWorker>();
+        services.AddHostedService<DataRetentionWorker>();
+
+
 
         return services;
     }
