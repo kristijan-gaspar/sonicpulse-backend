@@ -254,19 +254,31 @@ public class DetectionProcessingWorkerTests
                     shouldFail: call == 1);
             });
 
+        var timeProvider =
+            new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+
         var worker = new DetectionProcessingWorker(
             new OneShotQueue(),
             scopeFactory.Object,
-            TimeProvider.System,
+            timeProvider,
             NullLogger<DetectionProcessingWorker>.Instance);
 
-        await RunUntilAsync(
-            worker,
-            () => Volatile.Read(ref recoveryCalls) >= 2,
-            TimeSpan.FromSeconds(7));
+        await worker.StartAsync(CancellationToken.None);
+
+        var deadline = DateTime.UtcNow.AddSeconds(1);
+        while (Volatile.Read(ref recoveryCalls) < 1 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        await Task.Delay(20); // give the worker a chance to schedule the retry delay
+        timeProvider.Advance(TimeSpan.FromSeconds(5));
+
+        deadline = DateTime.UtcNow.AddSeconds(1);
+        while (Volatile.Read(ref recoveryCalls) < 2 && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        await worker.StopAsync(CancellationToken.None);
 
         Assert.Equal(2, recoveryCalls);
-    }
 
     [Fact]
     public async Task ShutdownDuringWorkerRetryDelay_StopsCleanly()
