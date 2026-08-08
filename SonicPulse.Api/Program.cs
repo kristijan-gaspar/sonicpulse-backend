@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using Scalar.AspNetCore;
 using Serilog;
 using SonicPulse.Api.Configuration;
+using SonicPulse.Api.Extensions;
 using SonicPulse.Api.Middleware;
 using SonicPulse.Application;
 using SonicPulse.Domain.Rules;
@@ -15,6 +16,8 @@ builder.Host.UseSerilog((ctx, cfg) => cfg
     .WriteTo.Console());
 
 builder.Services.AddControllers();
+
+builder.Services.AddApiRateLimiting(builder.Configuration);
 
 builder.Services
     .AddApplication()
@@ -46,6 +49,7 @@ app.Services.GetRequiredService<GroupingRules>();
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<ApiKeyMiddleware>();
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {
