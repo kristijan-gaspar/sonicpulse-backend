@@ -14,8 +14,11 @@ public static class WeightedCentroidLocationEstimator
         double sumW = 0, sumLat = 0, sumLon = 0;
         foreach (var d in detections)
         {
-            double accuracy = Math.Max(d.GpsAccuracy, 1.0);
-            double w = 1.0 / accuracy;
+            if (d.GpsAccuracy <= 0)
+                throw new ArgumentException(
+                    "GpsAccuracy must be positive to compute an inverse-square weight.", nameof(detections));
+
+            double w = 1.0 / (d.GpsAccuracy * d.GpsAccuracy);
 
             sumW += w;
             sumLat += w * d.Location.Latitude;

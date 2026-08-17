@@ -10,7 +10,7 @@ namespace SonicPulse.Tests.Application;
 public class GetHotspotsHandlerTests
 {
     private static Hotspot MakeHotspot() => Hotspot.Create(
-        new Coordinates(45.8021, 15.9711), 142.7, 70, 2,
+        new Coordinates(45.8021, 15.9711), 142.7, 2,
         new DateTime(2026, 7, 2, 14, 31, 8, DateTimeKind.Utc),
         new DateTime(2026, 7, 2, 14, 31, 11, DateTimeKind.Utc));
 
@@ -31,7 +31,6 @@ public class GetHotspotsHandlerTests
         Assert.Equal(hotspot.Centroid.Latitude, dto.Latitude);
         Assert.Equal(hotspot.Centroid.Longitude, dto.Longitude);
         Assert.Equal(hotspot.RadiusMeters, dto.RadiusMeters);
-        Assert.Equal(hotspot.Confidence, dto.Confidence);
         Assert.Equal(hotspot.DeviceCount, dto.DeviceCount);
         Assert.Equal(hotspot.FirstReceivedAtUtc, dto.FirstReceivedAtUtc);
         Assert.Equal(hotspot.LastReceivedAtUtc, dto.LastReceivedAtUtc);

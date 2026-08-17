@@ -1,24 +1,23 @@
 using SonicPulse.Domain.Entities;
-using SonicPulse.Domain.Rules;
 using SonicPulse.Domain.ValueObjects;
 
 namespace SonicPulse.Domain.Services;
 
 public static class HotspotAssembler
 {
-    public static Hotspot Assemble(IReadOnlyList<Detection> group, GroupingRules rules)
+    public static Hotspot Assemble(IReadOnlyList<Detection> group)
     {
-        var computed = Compute(group, rules);
+        var computed = Compute(group);
         return Hotspot.Create(
-            computed.Centroid, computed.RadiusMeters, computed.Confidence,
+            computed.Centroid, computed.RadiusMeters,
             computed.DeviceCount, computed.First, computed.Last);
     }
 
-    public static void Reassemble(Hotspot existing, IReadOnlyList<Detection> group, GroupingRules rules)
+    public static void Reassemble(Hotspot existing, IReadOnlyList<Detection> group)
     {
-        var computed = Compute(group, rules);
+        var computed = Compute(group);
         existing.Recalculate(
-            computed.Centroid, computed.RadiusMeters, computed.Confidence,
+            computed.Centroid, computed.RadiusMeters,
             computed.DeviceCount, computed.First, computed.Last);
     }
 
@@ -41,20 +40,19 @@ public static class HotspotAssembler
     }
 
     private static (
-        Coordinates Centroid, double RadiusMeters, int Confidence,
+        Coordinates Centroid, double RadiusMeters,
         int DeviceCount, DateTime First, DateTime Last) Compute(
-        IReadOnlyList<Detection> group, GroupingRules rules)
+        IReadOnlyList<Detection> group)
     {
         // One device, one spatial vote: a device that sends several detections
         // for the same event must not out-weigh a device that sent one, so
         // centroid/radius use one representative per DeviceId (best GPS
-        // accuracy, then loudest, then earliest, then Id - fully deterministic).
-        // deviceCount, timestamps, and confidence still use the full group.
+        // accuracy, then earliest, then Id - fully deterministic).
+        // deviceCount and timestamps still use the full group.
         var spatialRepresentatives = group
             .GroupBy(d => d.DeviceId)
             .Select(g => g
                 .OrderBy(d => d.GpsAccuracy)
-                .ThenByDescending(d => d.PeakDbfs)
                 .ThenBy(d => d.ReceivedAtUtc)
                 .ThenBy(d => d.Id)
                 .First())
@@ -62,13 +60,11 @@ public static class HotspotAssembler
 
         var centroid = WeightedCentroidLocationEstimator.Estimate(spatialRepresentatives);
 
-        double maxDistance = spatialRepresentatives.Max(d => GeoDistance.Meters(centroid, d.Location));
-        double radius = 0.5 * maxDistance;
+        double radius = spatialRepresentatives.Max(d => GeoDistance.Meters(centroid, d.Location));
 
-        int confidence = HeuristicConfidenceScorer.Score(group, rules);
         int deviceCount = group.Select(d => d.DeviceId).Distinct().Count();
 
-        return (centroid, radius, confidence, deviceCount,
+        return (centroid, radius, deviceCount,
                 group.Min(d => d.ReceivedAtUtc), group.Max(d => d.ReceivedAtUtc));
     }
 }

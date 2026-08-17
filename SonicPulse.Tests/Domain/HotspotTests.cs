@@ -12,12 +12,11 @@ public class HotspotTests
     [Fact]
     public void Create_ValidValues_PopulatesProperties()
     {
-        var hotspot = Hotspot.Create(Centroid, 150.0, 70, 2, First, Last);
+        var hotspot = Hotspot.Create(Centroid, 150.0, 2, First, Last);
 
         Assert.NotEqual(Guid.Empty, hotspot.Id);
         Assert.Equal(Centroid, hotspot.Centroid);
         Assert.Equal(150.0, hotspot.RadiusMeters);
-        Assert.Equal(70, hotspot.Confidence);
         Assert.Equal(2, hotspot.DeviceCount);
         Assert.Equal(First, hotspot.FirstReceivedAtUtc);
         Assert.Equal(Last, hotspot.LastReceivedAtUtc);
@@ -27,47 +26,37 @@ public class HotspotTests
     public void Create_NegativeRadius_Throws()
     {
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => Hotspot.Create(Centroid, -1, 70, 2, First, Last));
-    }
-
-    [Theory]
-    [InlineData(-1)]
-    [InlineData(101)]
-    public void Create_ConfidenceOutOfRange_Throws(int confidence)
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(
-            () => Hotspot.Create(Centroid, 150.0, confidence, 2, First, Last));
+            () => Hotspot.Create(Centroid, -1, 2, First, Last));
     }
 
     [Fact]
     public void Create_DeviceCountBelowTwo_Throws()
     {
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => Hotspot.Create(Centroid, 150.0, 70, 1, First, Last));
+            () => Hotspot.Create(Centroid, 150.0, 1, First, Last));
     }
 
     [Fact]
     public void Create_FirstReceivedAfterLastReceived_Throws()
     {
         Assert.Throws<ArgumentException>(
-            () => Hotspot.Create(Centroid, 150.0, 70, 2, Last, First));
+            () => Hotspot.Create(Centroid, 150.0, 2, Last, First));
     }
 
     [Fact]
     public void Recalculate_MutatesExistingObject()
     {
-        var hotspot = Hotspot.Create(Centroid, 150.0, 70, 2, First, Last);
+        var hotspot = Hotspot.Create(Centroid, 150.0, 2, First, Last);
         var id = hotspot.Id;
 
         var newCentroid = new Coordinates(45.8100, 15.9800);
         var newLast = Last.AddSeconds(1);
 
-        hotspot.Recalculate(newCentroid, 200.0, 55, 3, First, newLast);
+        hotspot.Recalculate(newCentroid, 200.0, 3, First, newLast);
 
         Assert.Equal(id, hotspot.Id);
         Assert.Equal(newCentroid, hotspot.Centroid);
         Assert.Equal(200.0, hotspot.RadiusMeters);
-        Assert.Equal(55, hotspot.Confidence);
         Assert.Equal(3, hotspot.DeviceCount);
         Assert.Equal(newLast, hotspot.LastReceivedAtUtc);
     }
@@ -75,9 +64,9 @@ public class HotspotTests
     [Fact]
     public void Recalculate_InvalidValues_Throws()
     {
-        var hotspot = Hotspot.Create(Centroid, 150.0, 70, 2, First, Last);
+        var hotspot = Hotspot.Create(Centroid, 150.0, 2, First, Last);
 
         Assert.Throws<ArgumentOutOfRangeException>(
-            () => hotspot.Recalculate(Centroid, 150.0, 70, 1, First, Last));
+            () => hotspot.Recalculate(Centroid, 150.0, 1, First, Last));
     }
 }
