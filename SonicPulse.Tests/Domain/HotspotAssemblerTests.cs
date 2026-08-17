@@ -1,5 +1,4 @@
 using SonicPulse.Domain.Entities;
-using SonicPulse.Domain.Rules;
 using SonicPulse.Domain.Services;
 using SonicPulse.Domain.ValueObjects;
 
@@ -7,12 +6,6 @@ namespace SonicPulse.Tests.Domain;
 
 public class HotspotAssemblerTests
 {
-    private static readonly GroupingRules Rules = new(
-        timeWindow: TimeSpan.FromSeconds(5),
-        radiusMeters: 1000,
-        minDeviceCount: 2,
-        candidateSearchExpansionFactor: 1.1);
-
     private static readonly DateTime BaseTime = new(2026, 7, 2, 14, 31, 7, DateTimeKind.Utc);
 
     private static Detection MakeDetection(
@@ -20,7 +13,7 @@ public class HotspotAssemblerTests
         => Detection.Create(deviceId ?? DeviceId.New(), -8.5, location, 12.0, receivedAtUtc, null);
 
     [Fact]
-    public void Assemble_RadiusEqualsHalfMaxDistanceFromCentroid()
+    public void Assemble_RadiusEqualsMaxDistanceFromCentroid()
     {
         var group = new List<Detection>
         {
@@ -28,10 +21,10 @@ public class HotspotAssemblerTests
             MakeDetection(new Coordinates(45.8100, 15.9800), BaseTime.AddSeconds(1))
         };
 
-        var hotspot = HotspotAssembler.Assemble(group, Rules);
+        var hotspot = HotspotAssembler.Assemble(group);
 
         var centroid = WeightedCentroidLocationEstimator.Estimate(group);
-        var expectedRadius = 0.5 * group.Max(d => GeoDistance.Meters(centroid, d.Location));
+        var expectedRadius = group.Max(d => GeoDistance.Meters(centroid, d.Location));
 
         Assert.Equal(expectedRadius, hotspot.RadiusMeters, precision: 6);
     }
@@ -45,7 +38,7 @@ public class HotspotAssemblerTests
             MakeDetection(new Coordinates(45.8020, 15.9710), BaseTime.AddSeconds(2))
         };
 
-        var hotspot = HotspotAssembler.Assemble(group, Rules);
+        var hotspot = HotspotAssembler.Assemble(group);
 
         Assert.Equal(2, hotspot.DeviceCount);
         Assert.Equal(BaseTime, hotspot.FirstReceivedAtUtc);
@@ -60,7 +53,7 @@ public class HotspotAssemblerTests
             MakeDetection(new Coordinates(45.8010, 15.9700), BaseTime),
             MakeDetection(new Coordinates(45.8020, 15.9710), BaseTime.AddSeconds(1))
         };
-        var hotspot = HotspotAssembler.Assemble(initialGroup, Rules);
+        var hotspot = HotspotAssembler.Assemble(initialGroup);
         var id = hotspot.Id;
 
         var expandedGroup = new List<Detection>(initialGroup)
@@ -68,7 +61,7 @@ public class HotspotAssemblerTests
             MakeDetection(new Coordinates(45.8030, 15.9720), BaseTime.AddSeconds(2))
         };
 
-        HotspotAssembler.Reassemble(hotspot, expandedGroup, Rules);
+        HotspotAssembler.Reassemble(hotspot, expandedGroup);
 
         Assert.Equal(id, hotspot.Id);
         Assert.Equal(3, hotspot.DeviceCount);
@@ -89,8 +82,8 @@ public class HotspotAssemblerTests
         var fullGroup = new List<Detection> { aBest, aWorse1, aWorse2, b };
         var representativeOnly = new List<Detection> { aBest, b };
 
-        var fromFull = HotspotAssembler.Assemble(fullGroup, Rules);
-        var fromRepresentative = HotspotAssembler.Assemble(representativeOnly, Rules);
+        var fromFull = HotspotAssembler.Assemble(fullGroup);
+        var fromRepresentative = HotspotAssembler.Assemble(representativeOnly);
 
         Assert.Equal(fromRepresentative.Centroid.Latitude, fromFull.Centroid.Latitude, precision: 9);
         Assert.Equal(fromRepresentative.Centroid.Longitude, fromFull.Centroid.Longitude, precision: 9);
@@ -98,22 +91,47 @@ public class HotspotAssemblerTests
     }
 
     [Fact]
-    public void Assemble_RepresentativeSelection_BestAccuracyThenLoudestBreaksTies()
+    public void Assemble_RepresentativeSelection_BestAccuracyThenEarliestBreaksTies()
     {
         var device = DeviceId.New();
-        // Same GpsAccuracy - louder (higher, less negative PeakDbfs) wins the tie.
-        var quieter = Detection.Create(device, -20.0, new Coordinates(45.8000, 15.9700), 5.0, BaseTime, null);
-        var louder = Detection.Create(device, -3.0, new Coordinates(45.9000, 16.0000), 5.0, BaseTime.AddSeconds(1), null);
+        // Same GpsAccuracy - earlier ReceivedAtUtc wins the tie, regardless of loudness.
+        var earlier = Detection.Create(device, -3.0, new Coordinates(45.8000, 15.9700), 5.0, BaseTime, null);
+        var later = Detection.Create(device, -20.0, new Coordinates(45.9000, 16.0000), 5.0, BaseTime.AddSeconds(1), null);
         var other = Detection.Create(DeviceId.New(), -8.5, new Coordinates(45.8500, 15.9850), 5.0, BaseTime, null);
 
-        var group = new List<Detection> { quieter, louder, other };
-        var expectedRepresentatives = new List<Detection> { louder, other };
+        var group = new List<Detection> { earlier, later, other };
+        var expectedRepresentatives = new List<Detection> { earlier, other };
 
-        var fromGroup = HotspotAssembler.Assemble(group, Rules);
-        var fromExpected = HotspotAssembler.Assemble(expectedRepresentatives, Rules);
+        var fromGroup = HotspotAssembler.Assemble(group);
+        var fromExpected = HotspotAssembler.Assemble(expectedRepresentatives);
 
         Assert.Equal(fromExpected.Centroid.Latitude, fromGroup.Centroid.Latitude, precision: 9);
         Assert.Equal(fromExpected.Centroid.Longitude, fromGroup.Centroid.Longitude, precision: 9);
+    }
+
+    [Fact]
+    public void Assemble_RepresentativeSelection_PeakDbfsDoesNotInfluenceTieBreak()
+    {
+        var device = DeviceId.New();
+        var other = Detection.Create(DeviceId.New(), -8.5, new Coordinates(45.8500, 15.9850), 5.0, BaseTime, null);
+
+        // Scenario 1: the earlier detection happens to be the quieter one.
+        var earlierQuieter = Detection.Create(device, -30.0, new Coordinates(45.8000, 15.9700), 5.0, BaseTime, null);
+        var laterLouder = Detection.Create(device, -1.0, new Coordinates(45.9000, 16.0000), 5.0, BaseTime.AddSeconds(1), null);
+        var groupQuieterFirst = new List<Detection> { earlierQuieter, laterLouder, other };
+
+        // Scenario 2: same timing, but PeakDbfs values swapped - earlier is now the louder one.
+        var earlierLouder = Detection.Create(device, -1.0, new Coordinates(45.8000, 15.9700), 5.0, BaseTime, null);
+        var laterQuieter = Detection.Create(device, -30.0, new Coordinates(45.9000, 16.0000), 5.0, BaseTime.AddSeconds(1), null);
+        var groupLouderFirst = new List<Detection> { earlierLouder, laterQuieter, other };
+
+        var fromQuieterFirst = HotspotAssembler.Assemble(groupQuieterFirst);
+        var fromLouderFirst = HotspotAssembler.Assemble(groupLouderFirst);
+
+        // Both scenarios must pick the EARLIER detection as representative
+        // regardless of which one is louder, so the centroid is identical.
+        Assert.Equal(fromQuieterFirst.Centroid.Latitude, fromLouderFirst.Centroid.Latitude, precision: 9);
+        Assert.Equal(fromQuieterFirst.Centroid.Longitude, fromLouderFirst.Centroid.Longitude, precision: 9);
     }
 
     [Fact]
@@ -129,7 +147,7 @@ public class HotspotAssemblerTests
             MakeDetection(new Coordinates(45.8013, 15.9703), BaseTime.AddSeconds(3), deviceB)
         };
 
-        var hotspot = HotspotAssembler.Assemble(group, Rules);
+        var hotspot = HotspotAssembler.Assemble(group);
 
         Assert.Equal(2, hotspot.DeviceCount);
     }

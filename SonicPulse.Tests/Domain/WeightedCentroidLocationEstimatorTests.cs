@@ -50,15 +50,16 @@ public class WeightedCentroidLocationEstimatorTests
         Assert.True(centroid.Longitude < 15.5);
     }
 
-    [Fact]
-    public void Estimate_GpsAccuracyOfZero_DoesNotThrow()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void Estimate_NonPositiveGpsAccuracy_Throws(double gpsAccuracy)
     {
-        var a = MakeDetection(-10, 0, new Coordinates(45.0, 15.0));
+        var a = MakeDetection(-10, gpsAccuracy, new Coordinates(45.0, 15.0));
         var b = MakeDetection(-10, 10, new Coordinates(46.0, 16.0));
 
-        var centroid = WeightedCentroidLocationEstimator.Estimate([a, b]);
-
-        Assert.InRange(centroid.Latitude, 45.0, 46.0);
+        Assert.Throws<ArgumentException>(
+            () => WeightedCentroidLocationEstimator.Estimate([a, b]));
     }
 
     [Fact]

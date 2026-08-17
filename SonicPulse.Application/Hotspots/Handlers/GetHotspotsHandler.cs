@@ -17,5 +17,5 @@ public sealed class GetHotspotsHandler(IHotspotRepository hotspots, TimeProvider
 
     internal static HotspotDto ToDto(Hotspot hotspot) => new(
         hotspot.Id, hotspot.Centroid.Latitude, hotspot.Centroid.Longitude, hotspot.RadiusMeters,
-        hotspot.Confidence, hotspot.DeviceCount, hotspot.FirstReceivedAtUtc, hotspot.LastReceivedAtUtc);
+        hotspot.DeviceCount, hotspot.FirstReceivedAtUtc, hotspot.LastReceivedAtUtc);
 }

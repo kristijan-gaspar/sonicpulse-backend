@@ -18,7 +18,6 @@ public sealed class HotspotConfiguration : IEntityTypeConfiguration<Hotspot>
         });
 
         builder.Property(x => x.RadiusMeters).HasColumnName("radius_meters");
-        builder.Property(x => x.Confidence).HasColumnName("confidence");
         builder.Property(x => x.DeviceCount).HasColumnName("device_count");
         builder.Property(x => x.FirstReceivedAtUtc).HasColumnName("first_received_at_utc");
         builder.Property(x => x.LastReceivedAtUtc).HasColumnName("last_received_at_utc");

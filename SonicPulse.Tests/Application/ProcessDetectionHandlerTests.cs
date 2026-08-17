@@ -173,23 +173,23 @@ public class ProcessDetectionHandlerTests
     }
 
     [Fact]
-    public async Task HandleAsync_ReprocessingAlreadyAssignedPendingMember_DoesNotChangeConfidence()
+    public async Task HandleAsync_ReprocessingAlreadyAssignedPendingMember_DoesNotChangeRadius()
     {
         // A+B form a hotspot when A is processed (B stays Pending, per the
         // "own turn" design). B later gets its own turn re-discovering the
-        // exact same pair - no new information arrived, so confidence must
+        // exact same pair - no new information arrived, so the radius must
         // not change just because B was reprocessed.
         var a = MakeDetection(BaseLocation, BaseTime);
         var b = MakeDetection(BaseLocation, BaseTime.AddSeconds(4.9));
         _detectionStore.AddRange([a, b]);
 
         await _handler.HandleAsync(a.Id, default);
-        var confidenceAfterFormation = _hotspotStore[a.HotspotId!.Value].Confidence;
+        var radiusAfterFormation = _hotspotStore[a.HotspotId!.Value].RadiusMeters;
 
         await _handler.HandleAsync(b.Id, default);
-        var confidenceAfterReprocessing = _hotspotStore[a.HotspotId!.Value].Confidence;
+        var radiusAfterReprocessing = _hotspotStore[a.HotspotId!.Value].RadiusMeters;
 
-        Assert.Equal(confidenceAfterFormation, confidenceAfterReprocessing);
+        Assert.Equal(radiusAfterFormation, radiusAfterReprocessing);
     }
 
     [Fact]
